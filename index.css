@@ -1,0 +1,35 @@
+body{
+    width: 800px;
+}
+h1 {
+    background-color:aqua;
+    text-align:center;
+}
+.name{
+    color: red;
+    text-align: right;
+}
+.contents {
+    border: 3px solid green;
+    border-radius: 20px;
+    padding: 10px;
+}
+.activity-box {
+    display: flex;        /* 横並びにする */
+    align-items: center;  /* 縦位置を中央に揃える */
+    gap: 20px;            /* テキストと画像の間隔 */
+}
+p{
+    font-size: larger
+}
+img{
+    display: inline-block;
+}
+.photo1{
+    position: relative;
+    left:20px;
+}
+.photo2{
+    position: relative;
+    left:100px;
+}

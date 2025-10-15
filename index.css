@@ -6,7 +6,7 @@ h1 {
     text-align:center;
 }
 .name{
-    color: red;
+    color: darkgoldenrod;
     text-align: right;
 }
 .contents {
@@ -32,4 +32,24 @@ img{
 .photo2{
     position: relative;
     left:100px;
+}
+
+.button-container {
+    display: flex;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.link-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #4b8df8;
+    color: white;
+    font-weight: bold;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: background-color 0.3s ease;
+}
+.link-button:hover {
+    background-color: #357ae8;
 }

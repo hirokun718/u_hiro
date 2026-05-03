@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced 3D MD Simulation Lab</title>
+    <style>
+        :root { --primary: #4a90e2; --bg: #050505; --panel: #151515; --text: #f0f0f0; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        .header { padding: 10px; background: var(--panel); border-bottom: 2px solid var(--primary); text-align: center; }
+        .main-container { flex: 1; display: flex; position: relative; }
+        #canvas-container { flex: 1; position: relative; }
+        .ui-panel { width: 280px; background: var(--panel); padding: 15px; border-left: 1px solid #333; overflow-y: auto; font-size: 0.9em; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tab-btn { flex: 1; padding: 8px; background: #333; border: none; color: #888; cursor: pointer; border-radius: 4px; font-size: 0.8em; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .control-group { margin-bottom: 15px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px; }
+        label { display: block; color: #aaa; margin-bottom: 5px; font-size: 0.75em; }
+        .val-display { color: var(--primary); float: right; font-family: monospace; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn { width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 8px; }
+        .btn-play { background: #00e676; color: #000; }
+        .btn-pause { background: #f1c40f; color: #000; }
+        .btn-reset { background: #e74c3c; color: white; }
+        .guide { font-size: 0.75em; color: #666; margin-top: 10px; background: #222; padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <strong>3D MD Simulation Lab</strong> <div>植松 宏貴 ゼミ資料：計算機シミュレーション動作確認用</div>
+</div>
+
+<div class="main-container">
+    <div id="canvas-container"></div>
+    <div class="ui-panel">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchMode(1)">1.クラスター</button>
+            <button class="tab-btn" onclick="switchMode(2)">2.相共存</button>
+            <button class="tab-btn" onclick="switchMode(3)">3.蒸着</button>
+        </div>
+
+        <div id="controls-content">
+            <!-- Dynamic Controls here -->
+        </div>
+
+        <button class="btn btn-play" id="btn-toggle" onclick="togglePlay()">一時停止</button>
+        <button class="btn btn-reset" onclick="initSimulation()">リセット</button>
+
+        <div class="guide">
+            <strong>操作方法:</strong><br>
+            左ドラッグ：回転<br>
+            右ドラッグ：平行移動<br>
+            ホイール：ズーム
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    let scene, camera, renderer, controls, particles = [], isRunning = true, currentMode = 1;
+    const canvasContainer = document.getElementById('canvas-container');
+
+    function initScene() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(60, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+        camera.position.set(25, 20, 25);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        canvasContainer.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const ambient = new THREE.AmbientLight(0x505050);
+        scene.add(ambient);
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
+
+        renderUI();
+        initSimulation();
+        animate();
+    }
+
+    function switchMode(mode) {
+        currentMode = mode;
+        document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i+1 === mode));
+        renderUI();
+        initSimulation();
+    }
+
+    function renderUI() {
+        const content = document.getElementById('controls-content');
+        if(currentMode === 1) {
+            content.innerHTML = `
+                <div class="control-group">
+                    <label>粒子数 <span class="val-display" id="val_n">40</span></label>
+                    <input type="range" id="param_n" min="10" max="150" value="40">
+                </div>
+                <div class="control-group">
+                    <label>温度 <span class="val-display" id="val_t">0.5</span></label>
+                    <input type="range" id="param_t" min="0" max="5" step="0.1" value="0.5">
+                </div>`;
+        } else if(currentMode === 2) {
+            content.innerHTML = `
+                <div class="control-group">
+                    <label>格子密度 <span class="val-display" id="val_n">10</span></label>
+                    <input type="range" id="param_n" min="5" max="15" value="10">
+                </div>
+                <div class="control-group">
+                    <label>環境温度 <span class="val-display" id="val_t">2.0</span></label>
+                    <input type="range" id="param_t" min="0.5" max="5" step="0.1" value="2.0">
+                </div>`;
+        } else {
+            content.innerHTML = `
+                <div class="control-group">
+                    <label>粒子サイズ <span class="val-display" id="val_n">1.0</span></label>
+                    <input type="range" id="param_n" min="0.5" max="2" step="0.1" value="1.0">
+                </div>
+                <div class="control-group">
+                    <label>表面温度 <span class="val-display" id="val_t">0.5</span></label>
+                    <input type="range" id="param_t" min="0" max="3" step="0.1" value="0.5">
+                </div>`;
+        }
+    }
+
+    function initSimulation() {
+        particles.forEach(p => scene.remove(p));
+        particles = [];
+        const n = parseInt(document.getElementById('param_n').value);
+
+        if(currentMode === 1) {
+            const geo = new THREE.SphereGeometry(0.7, 12, 12);
+            for(let i=0; i<n; i++) {
+                const mat = new THREE.MeshPhongMaterial({color: 0x4a90e2});
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set((Math.random()-0.5)*10, 10+(Math.random()-0.5)*10, (Math.random()-0.5)*10);
+                m.userData = { vx: (Math.random()-0.5)*0.2, vy:(Math.random()-0.5)*0.2, vz:(Math.random()-0.5)*0.2 };
+                scene.add(m);
+                particles.push(m);
+            }
+        } else if(currentMode === 2) {
+            const geo = new THREE.SphereGeometry(0.6, 8, 8);
+            for(let x=0; x<n; x++) {
+                for(let y=0; y<8; y++) {
+                    for(let z=0; z<8; z++) {
+                        const mat = new THREE.MeshPhongMaterial({color: 0x00e676});
+                        const m = new THREE.Mesh(geo, mat);
+                        m.userData = { ox: x*2-n, oy: y*2, oz: z*2-8 };
+                        scene.add(m);
+                        particles.push(m);
+                    }
+                }
+            }
+        } else {
+            // Substrate for Deposition
+            const geo = new THREE.SphereGeometry(0.8, 8, 8);
+            for(let x=-8; x<=8; x+=2) {
+                for(let z=-8; z<=8; z+=2) {
+                    const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: 0x444444}));
+                    m.position.set(x, 0, z);
+                    m.userData = { fixed: true, layer: 0, radius: 0.8 };
+                    scene.add(m);
+                    particles.push(m);
+                }
+            }
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        if(!isRunning) { renderer.render(scene, camera); return; }
+
+        const t = parseFloat(document.getElementById('param_t').value);
+        const n = document.getElementById('param_n').value;
+        if(document.getElementById('val_t')) document.getElementById('val_t').innerText = t.toFixed(1);
+        if(document.getElementById('val_n')) document.getElementById('val_n').innerText = n;
+
+        if(currentMode === 1) {
+            particles.forEach((a, i) => {
+                let fx=0, fy=0, fz=0;
+                particles.forEach((b, j) => {
+                    if(i === j) return;
+                    let dx=b.position.x-a.position.x, dy=b.position.y-a.position.y, dz=b.position.z-a.position.z;
+                    let r = Math.sqrt(dx*dx+dy*dy+dz*dz) || 1;
+                    if(r < 15) {
+                        let f = (1.5/r) * (Math.pow(1.5/r, 4) - Math.pow(1.5/r, 2));
+                        fx+=f*dx/r; fy+=f*dy/r; fz+=f*dz/r;
+                    }
+                });
+                a.userData.vx = a.userData.vx*0.95 + fx + (Math.random()-0.5)*t*0.1;
+                a.userData.vy = a.userData.vy*0.95 + fy + (Math.random()-0.5)*t*0.1;
+                a.userData.vz = a.userData.vz*0.95 + fz + (Math.random()-0.5)*t*0.1;
+                a.position.x += a.userData.vx; a.position.y += a.userData.vy; a.position.z += a.userData.vz;
+                a.material.color.setHSL(0.6 - Math.min(t,5)*0.1, 0.8, 0.5);
+            });
+        } else if(currentMode === 2) {
+            particles.forEach(p => {
+                let heat = ((p.userData.ox + 10)/20) * t;
+                p.position.x = p.userData.ox + (Math.random()-0.5)*heat;
+                p.position.y = p.userData.oy + (Math.random()-0.5)*heat;
+                p.position.z = p.userData.oz + (Math.random()-0.5)*heat;
+                p.material.color.setHSL(0.3 - heat*0.1, 0.8, 0.5);
+            });
+        } else {
+            if(Math.random() < 0.1) {
+                const s = parseFloat(n);
+                const p = new THREE.Mesh(new THREE.SphereGeometry(s, 12, 12), new THREE.MeshPhongMaterial({color: 0xffaa00}));
+                p.position.set((Math.random()-0.5)*15, 20, (Math.random()-0.5)*15);
+                p.userData = { active: true, radius: s, layer: 1 };
+                scene.add(p);
+                particles.push(p);
+            }
+            particles.forEach(p => {
+                if(p.userData.active) {
+                    p.position.y -= 0.2;
+                    for(let target of particles) {
+                        if(p === target) continue;
+                        if(p.position.distanceTo(target.position) < (p.userData.radius + target.userData.radius)) {
+                            p.userData.active = false;
+                            p.userData.layer = (target.userData.layer || 0) + 1;
+                            p.position.x += (Math.random()-0.5)*t;
+                            p.position.z += (Math.random()-0.5)*t;
+                            p.material.color.setHSL((p.userData.layer * 40)%360 / 360, 0.8, 0.5);
+                        }
+                    }
+                }
+            });
+        }
+        renderer.render(scene, camera);
+    }
+
+    function togglePlay() {
+        isRunning = !isRunning;
+        document.getElementById('btn-toggle').innerText = isRunning ? "一時停止" : "再開";
+        document.getElementById('btn-toggle').className = isRunning ? "btn btn-pause" : "btn btn-play";
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+    });
+
+    initScene();
+</script>
+</body>
+</html>
